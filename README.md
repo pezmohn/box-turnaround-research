@@ -14,6 +14,13 @@ Treat the indicator as a market-state classifier:
 - find which contextual features make a turnaround more likely
 - avoid PnL optimization until context labels show stable predictive value
 
+## Current Research Read
+
+The current Phase 1-3 result is summarized in `docs/context_playbook.md`.
+Short version: long box streaks do not reverse by themselves. The useful
+context appears when a 5+ streak also shows extension failure plus structural
+reclaim or break, especially VWAP reclaim/loss and prior box midpoint break.
+
 ## Suggested Workflow
 
 1. Reproduce the confirmed-box logic from the Pine script in `pine/mtf_breakout_box.pine`.
