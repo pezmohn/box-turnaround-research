@@ -1,0 +1,228 @@
+//@version=5
+indicator("Box Context Overlay - Research v1", overlay=true, max_boxes_count=200, max_labels_count=200)
+
+// Research context overlay derived from box-turnaround Phase 1-3.
+// This is not an entry model, not a stop model, and not a PnL strategy.
+// It marks live-visible context transitions after confirmed 5m closes only.
+
+groupCore = "Confirmed Box Logic"
+consecutiveConfirms = input.int(1, "Consecutive Confirms", minval=1, maxval=2, group=groupCore)
+useCloseBreakout = input.bool(true, "Use Close Confirmation", group=groupCore)
+useAlternatingFilter = input.bool(false, "Alternate Long/Short Only", group=groupCore)
+extensionTarget = input.string("1.618", "Extension Target", options=["1.2772", "1.4144", "1.618", "2.272"], group=groupCore)
+
+groupFilters = "Original Filters"
+useAdxFilter = input.bool(true, "Use ADX Filter", group=groupFilters)
+adxThreshold = input.int(20, "ADX Threshold", minval=1, group=groupFilters)
+useSessionFilter = input.bool(true, "Use Session Filter", group=groupFilters)
+tradeSession = input.session("0930-1600", "Session (Exchange Time)", group=groupFilters)
+useVwapFilter = input.bool(true, "Use VWAP Filter For Box Confirmation", group=groupFilters)
+useVolumeFilter = input.bool(false, "Use Volume Filter", group=groupFilters)
+volumeMultiplier = input.float(1.20, "Volume vs 5m SMA Multiplier", minval=0.1, step=0.05, group=groupFilters)
+useRangeFilter = input.bool(false, "Use Minimum Box Range Filter", group=groupFilters)
+minBoxAtrMult = input.float(0.35, "Min Box Range in ATR", minval=0.05, step=0.05, group=groupFilters)
+
+groupContext = "Context Findings"
+minStreak = input.int(5, "Long Streak Threshold", minval=2, group=groupContext)
+failureBars = input.int(3, "Extension Failure Window", minval=1, maxval=12, group=groupContext)
+reclaimWindow = input.int(3, "Context Reclaim Window", minval=1, maxval=12, group=groupContext)
+markWeakStreak = input.bool(true, "Mark 5+ Streak Alone", group=groupContext)
+showContextLabels = input.bool(true, "Show Context Labels", group=groupContext)
+showBoxes = input.bool(true, "Draw Confirmed Boxes", group=groupContext)
+showVwap = input.bool(true, "Plot 5m VWAP", group=groupContext)
+showTable = input.bool(true, "Show State Table", group=groupContext)
+
+calcAdx() =>
+    [_, __, adxVal] = ta.dmi(14, 14)
+    adxVal
+
+getExtensionValue() =>
+    extensionTarget == "1.2772" ? 1.2772 : extensionTarget == "1.4144" ? 1.4144 : extensionTarget == "1.618" ? 1.618 : 2.272
+
+getExtensionPrice(float topPrice, float bottomPrice, bool isLong) =>
+    priceRange = topPrice - bottomPrice
+    extValue = getExtensionValue()
+    isLong ? bottomPrice + priceRange * extValue : topPrice - priceRange * extValue
+
+[h5_1, h5_2, h5_3,
+ l5_1, l5_2, l5_3,
+ c5_1, c5_2,
+ t5_1,
+ adx5_1, vwap5_1, vol5_1, volSma5_1, atr5_1] = request.security(
+     syminfo.tickerid,
+     "5",
+     [high[1], high[2], high[3],
+      low[1], low[2], low[3],
+      close[1], close[2],
+      time[1],
+      calcAdx()[1], ta.vwap(hlc3)[1], volume[1], ta.sma(volume, 20)[1], ta.atr(14)[1]],
+     lookahead=barmerge.lookahead_on)
+
+isNew5m = ta.change(time("5")) != 0
+sessionActive = not na(time(timeframe.period, tradeSession))
+boxTop = math.max(h5_1, h5_2)
+boxBottom = math.min(l5_1, l5_2)
+boxRange = boxTop - boxBottom
+boxMid = (boxTop + boxBottom) / 2.0
+
+adxPass = not useAdxFilter or adx5_1 > adxThreshold
+sessionPass = not useSessionFilter or sessionActive
+volumePass = not useVolumeFilter or vol5_1 > volSma5_1 * volumeMultiplier
+rangePass = not useRangeFilter or boxRange > atr5_1 * minBoxAtrMult
+
+breakHigh1 = useCloseBreakout ? c5_1 > h5_2 : h5_1 > h5_2
+breakLow1 = useCloseBreakout ? c5_1 < l5_2 : l5_1 < l5_2
+breakHigh2 = useCloseBreakout ? c5_2 > h5_3 : h5_2 > h5_3
+breakLow2 = useCloseBreakout ? c5_2 < l5_3 : l5_2 < l5_3
+
+signalLongRaw = consecutiveConfirms == 1 ? breakHigh1 : breakHigh1 and breakHigh2
+signalShortRaw = consecutiveConfirms == 1 ? breakLow1 : breakLow1 and breakLow2
+
+var int lastSignal = 0
+directionLongPass = not useAlternatingFilter or lastSignal != 1
+directionShortPass = not useAlternatingFilter or lastSignal != -1
+vwapLongPass = not useVwapFilter or c5_1 > vwap5_1
+vwapShortPass = not useVwapFilter or c5_1 < vwap5_1
+
+isLongBox = isNew5m and signalLongRaw and directionLongPass and adxPass and sessionPass and vwapLongPass and volumePass and rangePass
+isShortBox = isNew5m and signalShortRaw and directionShortPass and adxPass and sessionPass and vwapShortPass and volumePass and rangePass
+isBoxEvent = isLongBox or isShortBox
+boxDir = isLongBox ? 1 : isShortBox ? -1 : 0
+
+var int streakDir = 0
+var int streakLen = 0
+var float activeExtension = na
+var float activeMid = na
+var int activeDir = 0
+var int activeAge = 0
+var int activeStreakLen = 0
+var bool activeExtensionHit = false
+
+var bool armedFailure = false
+var bool armedTriggered = false
+var int armedDir = 0
+var int armedAge = 0
+var float armedMid = na
+
+var bool weakBull = false
+var bool weakBear = false
+var bool watchBull = false
+var bool watchBear = false
+var bool confirmBull = false
+var bool confirmBear = false
+var bool highBull = false
+var bool highBear = false
+
+weakBull := false
+weakBear := false
+watchBull := false
+watchBear := false
+confirmBull := false
+confirmBear := false
+highBull := false
+highBear := false
+
+if isNew5m and not na(c5_1)
+    if activeDir != 0 and not na(activeExtension)
+        activeAge += 1
+        activeExtensionHit := activeExtensionHit or (activeDir == 1 ? h5_1 >= activeExtension : l5_1 <= activeExtension)
+        if not armedFailure and activeStreakLen >= minStreak and activeAge >= failureBars and not activeExtensionHit
+            armedFailure := true
+            armedTriggered := false
+            armedDir := activeDir
+            armedMid := activeMid
+            armedAge := 0
+
+    if armedFailure
+        armedAge += 1
+        midpointBreak = armedDir == -1 ? h5_1 > armedMid : l5_1 < armedMid
+        vwapReclaim = armedDir == -1 ? c5_1 > vwap5_1 : c5_1 < vwap5_1
+        canTrigger = not armedTriggered and armedAge <= reclaimWindow
+
+        if canTrigger and midpointBreak and vwapReclaim
+            highBull := armedDir == -1
+            highBear := armedDir == 1
+            armedTriggered := true
+        else if canTrigger and vwapReclaim
+            confirmBull := armedDir == -1
+            confirmBear := armedDir == 1
+            armedTriggered := true
+        else if canTrigger and midpointBreak
+            watchBull := armedDir == -1
+            watchBear := armedDir == 1
+            armedTriggered := true
+
+        if armedAge > reclaimWindow and not armedTriggered
+            armedFailure := false
+            armedDir := 0
+            armedMid := na
+
+    if isBoxEvent
+        if boxDir == streakDir
+            streakLen += 1
+        else
+            streakDir := boxDir
+            streakLen := 1
+
+        lastSignal := boxDir
+        extensionPrice = getExtensionPrice(boxTop, boxBottom, boxDir == 1)
+
+        if showBoxes
+            boxColor = boxDir == 1 ? color.new(color.green, 84) : color.new(color.red, 84)
+            borderColor = boxDir == 1 ? color.new(color.green, 35) : color.new(color.red, 35)
+            box.new(t5_1, boxTop, t5_1 + 5 * 60 * 1000, boxBottom, xloc=xloc.bar_time, bgcolor=boxColor, border_color=borderColor)
+
+        if markWeakStreak and streakLen >= minStreak and not armedFailure
+            weakBull := boxDir == -1
+            weakBear := boxDir == 1
+
+        activeExtension := extensionPrice
+        activeMid := boxMid
+        activeDir := boxDir
+        activeAge := 0
+        activeStreakLen := streakLen
+        activeExtensionHit := false
+
+        if armedFailure and boxDir == armedDir
+            armedFailure := false
+            armedTriggered := false
+            armedDir := 0
+            armedMid := na
+        if armedFailure and boxDir == -armedDir and armedTriggered
+            armedFailure := false
+            armedTriggered := false
+            armedDir := 0
+            armedMid := na
+
+plot(showVwap ? vwap5_1 : na, "5m VWAP", color=color.new(color.blue, 25), linewidth=1)
+
+plotshape(showContextLabels and weakBull, title="Weak Red Streak Alone", style=shape.circle, location=location.belowbar, color=color.new(color.gray, 15), text="5R", textcolor=color.white, size=size.tiny)
+plotshape(showContextLabels and weakBear, title="Weak Green Streak Alone", style=shape.circle, location=location.abovebar, color=color.new(color.gray, 15), text="5G", textcolor=color.white, size=size.tiny)
+
+plotshape(showContextLabels and watchBull, title="Bullish Midpoint Watchlist", style=shape.triangleup, location=location.belowbar, color=color.new(color.yellow, 0), text="MID", textcolor=color.black, size=size.small)
+plotshape(showContextLabels and watchBear, title="Bearish Midpoint Watchlist", style=shape.triangledown, location=location.abovebar, color=color.new(color.yellow, 0), text="MID", textcolor=color.black, size=size.small)
+
+plotshape(showContextLabels and confirmBull, title="Bullish VWAP Confirmation", style=shape.triangleup, location=location.belowbar, color=color.new(color.blue, 0), text="VWAP", textcolor=color.white, size=size.small)
+plotshape(showContextLabels and confirmBear, title="Bearish VWAP Confirmation", style=shape.triangledown, location=location.abovebar, color=color.new(color.blue, 0), text="VWAP", textcolor=color.white, size=size.small)
+
+plotshape(showContextLabels and highBull, title="Bullish Highest Conviction Context", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), text="MID+VWAP", textcolor=color.black, size=size.normal)
+plotshape(showContextLabels and highBear, title="Bearish Highest Conviction Context", style=shape.triangledown, location=location.abovebar, color=color.new(color.lime, 0), text="MID+VWAP", textcolor=color.black, size=size.normal)
+
+alertcondition(watchBull or watchBear, "Box Context: Midpoint Watchlist", "5+ streak extension failure with prior box midpoint break.")
+alertcondition(confirmBull or confirmBear, "Box Context: VWAP Confirmation", "5+ streak extension failure with VWAP reclaim/loss.")
+alertcondition(highBull or highBear, "Box Context: Highest Conviction", "5+ streak extension failure with both VWAP and midpoint context.")
+
+var table stateTable = table.new(position.top_right, 2, 5, border_width=1)
+if showTable and barstate.islast
+    dirText = streakDir == 1 ? "green" : streakDir == -1 ? "red" : "none"
+    armedText = armedFailure ? (armedDir == 1 ? "green failure" : "red failure") : "none"
+    table.cell(stateTable, 0, 0, "State", text_color=color.white, bgcolor=color.new(color.black, 20))
+    table.cell(stateTable, 1, 0, "Value", text_color=color.white, bgcolor=color.new(color.black, 20))
+    table.cell(stateTable, 0, 1, "5m streak")
+    table.cell(stateTable, 1, 1, dirText + " x " + str.tostring(streakLen))
+    table.cell(stateTable, 0, 2, "Failure armed")
+    table.cell(stateTable, 1, 2, armedText)
+    table.cell(stateTable, 0, 3, "Failure age")
+    table.cell(stateTable, 1, 3, str.tostring(armedAge))
+    table.cell(stateTable, 0, 4, "Mode")
+    table.cell(stateTable, 1, 4, "context only")
