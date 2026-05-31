@@ -61,6 +61,19 @@ Generated event datasets are written under `data/processed/`. Tables and the
 Markdown report are written under `outputs/`. These are local artifacts and are
 gitignored by design.
 
+## Visual Casebook
+
+After Phase 3 validation, use the visual casebook to audit real chart examples
+for the strongest context states. See `docs/visual_casebook.md`.
+
+```bash
+python scripts/build_visual_casebook.py \
+  --events-file data/processed/box_events_all.parquet \
+  --data-dir /home/backtest/stockdata/stock_data_1min \
+  --samples-per-pattern 24 \
+  --split validation
+```
+
 ## Repository Layout
 
 ```text
