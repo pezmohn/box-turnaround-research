@@ -1,0 +1,39 @@
+# Box Turnaround Research
+
+Research workspace for quantifying a TradingView 5-minute breakout box indicator as a market-context and tape-reading tool.
+
+This is not yet a trading strategy. The first objective is to build an event dataset of confirmed 5-minute box events and analyze streaks, session behavior, exhaustion, extension failure, ADX fade, VWAP reclaim, and turnaround probability.
+
+## Current Goal
+
+Treat the indicator as a market-state classifier:
+
+- identify confirmed green/red 5m breakout boxes
+- measure how long same-color box streaks persist
+- study how continuation and reversal probabilities change by streak length and session window
+- find which contextual features make a turnaround more likely
+- avoid PnL optimization until context labels show stable predictive value
+
+## Suggested Workflow
+
+1. Reproduce the confirmed-box logic from the Pine script in `pine/mtf_breakout_box.pine`.
+2. Build a box-event dataset as specified in `docs/event_schema.md`.
+3. Generate baseline streak/session summaries.
+4. Define and validate context labels in `docs/research_questions.md`.
+5. Only then test whether context states are tradeable.
+
+## Repository Layout
+
+```text
+pine/                 TradingView source logic
+docs/                 research brief, assumptions, event schema, questions
+configs/              default research parameters
+src/                  Python modules for event extraction and analysis
+notebooks/            exploratory notebooks
+data/                 local data location, raw data is gitignored
+outputs/              local reports/figures, gitignored
+```
+
+## Important Caveat
+
+The Ghost Box is a realtime preview feature. It should not be used for historical labels unless lower-timeframe intrabar data is available and the exact realtime visibility can be reconstructed.
