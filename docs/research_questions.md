@@ -12,6 +12,8 @@
 8. Is VWAP reclaim/loss predictive?
 9. Are shrinking box ranges after a streak predictive of exhaustion?
 10. Are these effects stable out-of-sample and across symbols?
+11. Do confirmed-box streaks and turnaround probabilities differ between in-play and out-of-play symbol-days?
+12. Does the indicator produce cleaner context when premarket volume and gap are elevated?
 
 ## Provisional Context Labels
 
@@ -65,6 +67,7 @@ extension_targets: 1.2772, 1.4144, 1.618, 2.272
 - Heatmap: P(opposite box next) by streak length x session bucket.
 - Heatmap: P(turnaround_candidate) by streak length x ADX fade bucket.
 - Heatmap: P(continuation extension hit) by streak length x VWAP distance bucket.
+- Heatmap: P(turnaround_candidate) by streak length x in-play classification.
 - Distribution of remaining streak length after each observed streak length.
 - Feature-importance analysis for `turnaround_candidate` using a simple, explainable model.
 - Written caveats and validation notes.

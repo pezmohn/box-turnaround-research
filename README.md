@@ -22,6 +22,38 @@ Treat the indicator as a market-state classifier:
 4. Define and validate context labels in `docs/research_questions.md`.
 5. Only then test whether context states are tradeable.
 
+## Research Runner
+
+The runner builds confirmed-box event datasets and summary tables. It does not
+run entries, exits, position sizing, or PnL optimization.
+
+Baseline universe:
+
+```bash
+python scripts/run_box_research.py \
+  --data-dir /home/backtest/stockdata/stock_data_1min
+```
+
+Ad-hoc ticker check:
+
+```bash
+python scripts/run_box_research.py \
+  --symbols NOW \
+  --data-dir /home/backtest/stockdata/stock_data_1min
+```
+
+Multiple ad-hoc tickers:
+
+```bash
+python scripts/run_box_research.py \
+  --symbols NOW,CRM,SNOW \
+  --data-dir /home/backtest/stockdata/stock_data_1min
+```
+
+Generated event datasets are written under `data/processed/`. Tables and the
+Markdown report are written under `outputs/`. These are local artifacts and are
+gitignored by design.
+
 ## Repository Layout
 
 ```text
@@ -29,6 +61,8 @@ pine/                 TradingView source logic
 docs/                 research brief, assumptions, event schema, questions
 configs/              default research parameters
 src/                  Python modules for event extraction and analysis
+scripts/              repeatable research runners
+tests/                synthetic timing/schema checks
 notebooks/            exploratory notebooks
 data/                 local data location, raw data is gitignored
 outputs/              local reports/figures, gitignored

@@ -2,6 +2,7 @@ data:
   timezone: exchange
   source_timeframe: 1m
   analysis_timeframe: 5m
+  default_symbols: [SPY, QQQ, AAPL, MSFT, NVDA, TSLA, AMD, META]
 
 indicator:
   consecutive_confirms: 1
@@ -10,7 +11,7 @@ indicator:
   use_adx_filter: true
   adx_threshold: 20
   use_session_filter: true
-  trade_session: "09:30-11:30"
+  trade_session: "09:30-16:00"
   use_vwap_filter: true
   use_volume_filter: false
   volume_multiplier: 1.20
@@ -22,6 +23,12 @@ research:
   min_streak_values: [2, 3, 4, 5]
   forward_windows_boxes: [3, 6, 12]
   adx_drop_thresholds: [1.5, 3.0, 5.0]
+  in_play:
+    enabled: true
+    premarket_window: ["04:00", "09:30"]
+    gap_threshold_pct: 3.0
+    premarket_volume_relative_threshold: 2.0
+    premarket_dollar_volume_min: 5000000
   session_buckets:
     open_impulse: ["09:30", "10:00"]
     morning_trend: ["10:00", "11:30"]

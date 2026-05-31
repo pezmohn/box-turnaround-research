@@ -12,6 +12,11 @@ timestamp_open
 timestamp_close
 session_date
 session_bucket
+in_play
+gap_pct
+premarket_volume
+premarket_volume_relative
+premarket_dollar_volume
 
 direction                  # 1 long/green, -1 short/red
 streak_direction           # current streak direction
