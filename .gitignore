@@ -1,0 +1,31 @@
+# Local market data
+/data/raw/
+/data/processed/
+/data/interim/
+
+# Generated reports and figures
+/outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Large exports
+*.csv
+*.parquet
+*.feather
+*.h5
+*.xlsx
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
