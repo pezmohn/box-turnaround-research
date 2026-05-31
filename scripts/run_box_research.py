@@ -14,7 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.analysis import context_interaction_tables, session_heatmaps, streak_survival_table
+from src.analysis import (
+    context_interaction_tables,
+    robustness_validation_tables,
+    session_heatmaps,
+    streak_survival_table,
+)
 from src.box_events import build_box_events
 from src.labels import add_context_labels
 
@@ -86,11 +91,15 @@ def main() -> int:
         interaction_tables = context_interaction_tables(combined)
         for name, table in interaction_tables.items():
             table.to_csv(tables_dir / f"{name}.csv", index=False)
+        robustness_tables = robustness_validation_tables(combined)
+        for name, table in robustness_tables.items():
+            table.to_csv(tables_dir / f"{name}.csv", index=False)
         _write_report(
             combined,
             streak_table,
             heatmaps,
             interaction_tables,
+            robustness_tables,
             reports_dir / "baseline_context_report.md",
             symbols,
         )
@@ -110,6 +119,7 @@ def _write_report(
     streak_table: pd.DataFrame,
     heatmaps: dict[str, pd.DataFrame],
     interaction_tables: dict[str, pd.DataFrame],
+    robustness_tables: dict[str, pd.DataFrame],
     path: Path,
     symbols: list[str],
 ) -> None:
@@ -171,6 +181,23 @@ def _write_report(
         lines.extend([f"### {name}", "", _markdown_table(_trim_report_table(table)), ""])
     lines.extend(
         [
+            "## Phase 3 Robustness / OOS Validation",
+            "",
+            "These tables use a chronological 70/30 split. Treat validation degradation as a warning, not as a tuning prompt.",
+            "",
+        ]
+    )
+    robustness_priority_tables = [
+        "phase3_base_rates_by_split",
+        "phase3_pattern_split_summary",
+        "phase3_pattern_symbol_group_summary",
+        "phase3_pattern_symbol_summary",
+    ]
+    for name in robustness_priority_tables:
+        table = robustness_tables.get(name, pd.DataFrame())
+        lines.extend([f"### {name}", "", _markdown_table(_trim_report_table(table)), ""])
+    lines.extend(
+        [
             "## Caveats",
             "",
             "- Confirmed boxes are evaluated only after the 5-minute candle is closed.",
@@ -178,6 +205,7 @@ def _write_report(
             "- In-play classification is a simple day-level subgroup label based on premarket context: gap, premarket relative volume, and premarket dollar volume.",
             "- Premarket relative volume uses available lookback history in the input data; early history can be sparse.",
             "- Phase 2 interaction tables are exploratory; do not optimize thresholds on the same sample used for final claims.",
+            "- Phase 3 validation is chronological and diagnostic; it is still not a trade backtest and contains no entry/exit/PnL logic.",
             "- Raw market data and generated event datasets are local artifacts and should not be committed.",
         ]
     )
@@ -187,7 +215,11 @@ def _write_report(
 def _trim_report_table(df: pd.DataFrame, max_rows: int = 30) -> pd.DataFrame:
     if df.empty or len(df) <= max_rows:
         return df
-    sort_cols = [col for col in ["n", "p_turnaround_candidate"] if col in df.columns]
+    sort_cols = [
+        col
+        for col in ["n", "lift_opposite_within_3", "p_reversal_followthrough", "p_turnaround_candidate"]
+        if col in df.columns
+    ]
     if not sort_cols:
         return df.head(max_rows)
     ascending = [False] * len(sort_cols)

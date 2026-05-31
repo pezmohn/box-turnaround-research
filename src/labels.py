@@ -30,4 +30,19 @@ def add_context_labels(events: pd.DataFrame, config: dict) -> pd.DataFrame:
         & out["extension_hit"]
         & (out["bars_until_extension_hit"] <= 6)
     )
+    out["reversal_followthrough"] = (
+        out["opposite_box_within_3"]
+        & out["failed_new_extreme_within_6"]
+        & ~out["continuation"]
+    )
+    out["vwap_hold_after_reclaim"] = (
+        out["vwap_reclaim_within_3"]
+        & out["opposite_box_within_6"]
+        & ~out["continuation"]
+    )
+    out["midpoint_hold"] = (
+        out["prior_box_mid_break_within_3"]
+        & out["opposite_box_within_6"]
+        & ~out["continuation"]
+    )
     return out
