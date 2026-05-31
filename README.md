@@ -74,6 +74,15 @@ python scripts/build_visual_casebook.py \
   --split validation
 ```
 
+Manual review app:
+
+```bash
+python scripts/serve_casebook_reviewer.py \
+  --casebook-dir outputs/casebook \
+  --host 127.0.0.1 \
+  --port 8765
+```
+
 ## Repository Layout
 
 ```text

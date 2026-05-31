@@ -44,3 +44,38 @@ These outputs are gitignored. Commit the generator and docs, not the chart artif
 - Treat VWAP reclaim/loss as confirmation, not prediction.
 - Keep late-but-correct examples separate from clean early transitions.
 - Do not promote to TradingView overlay until noisy/late/untradable examples have been reviewed.
+
+## HTML Reviewer
+
+Use the local reviewer instead of editing CSVs by hand:
+
+```bash
+python scripts/serve_casebook_reviewer.py \
+  --casebook-dir outputs/casebook \
+  --host 127.0.0.1 \
+  --port 8765
+```
+
+Open:
+
+```text
+http://127.0.0.1:8765
+```
+
+The reviewer shows the SVG chart, pattern metadata, current auto-classification,
+manual label buttons, notes, filtering, and progress counts. It writes manual
+reviews to:
+
+```text
+outputs/casebook/manual_review.csv
+```
+
+Keyboard shortcuts:
+
+- `1` clean
+- `2` late
+- `3` noisy
+- `4` untradable
+- `5` ignore
+- `n` next
+- `p` previous
