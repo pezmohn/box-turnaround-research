@@ -79,3 +79,18 @@ Keyboard shortcuts:
 - `5` ignore
 - `n` next
 - `p` previous
+
+## Offline Export
+
+When the Lenovo local server is not reachable, export one portable HTML file:
+
+```bash
+python scripts/export_casebook_offline.py \
+  --casebook-dir outputs/casebook \
+  --output-html outputs/casebook/offline_reviewer.html \
+  --zip outputs/casebook/offline_reviewer.zip
+```
+
+The offline reviewer embeds all sampled SVG charts. It stores labels in the
+browser's local storage and provides a `Download CSV` button for the manual
+review results.

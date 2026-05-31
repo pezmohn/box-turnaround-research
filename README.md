@@ -83,6 +83,15 @@ python scripts/serve_casebook_reviewer.py \
   --port 8765
 ```
 
+Portable offline export:
+
+```bash
+python scripts/export_casebook_offline.py \
+  --casebook-dir outputs/casebook \
+  --output-html outputs/casebook/offline_reviewer.html \
+  --zip outputs/casebook/offline_reviewer.zip
+```
+
 ## Repository Layout
 
 ```text
