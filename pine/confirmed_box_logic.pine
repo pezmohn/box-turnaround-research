@@ -1,0 +1,123 @@
+//@version=6
+indicator("Confirmed 5m Box Logic Reference", overlay=true)
+
+// Compact research reference extracted from the full MTF Breakout Box indicator.
+// Purpose: define confirmed historical box events. Realtime Ghost Box and risk table logic are intentionally excluded.
+
+group_core = "Core"
+consecutive_confirms = input.int(1, "Consecutive Confirms", minval=1, maxval=2, group=group_core)
+use_close_breakout = input.bool(true, "Use Close Confirmation", group=group_core)
+use_alternating_filter = input.bool(false, "Alternate Long/Short Only", group=group_core)
+extension_target = input.string("1.618", "Extension Target", options=["1.2772", "1.4144", "1.618", "2.272"], group=group_core)
+
+group_filters = "Filters"
+use_adx_filter = input.bool(true, "Use ADX Filter", group=group_filters)
+adx_threshold = input.int(20, "ADX Threshold", minval=1, group=group_filters)
+use_session_filter = input.bool(true, "Use Session Filter", group=group_filters)
+trade_session = input.session("0930-1130", "Session (Exchange Time)", group=group_filters)
+use_vwap_filter = input.bool(true, "Use VWAP Filter", group=group_filters)
+use_volume_filter = input.bool(false, "Use Volume Filter", group=group_filters)
+volume_multiplier = input.float(1.20, "Volume vs 5m SMA Multiplier", minval=0.1, step=0.05, group=group_filters)
+use_range_filter = input.bool(false, "Use Minimum Box Range Filter", group=group_filters)
+min_box_atr_mult = input.float(0.35, "Min Box Range in ATR", minval=0.05, step=0.05, group=group_filters)
+
+calc_adx() =>
+    [_, __, adx_val] = ta.dmi(14, 14)
+    adx_val
+
+get_extension_value() =>
+    extension_target == "1.2772" ? 1.2772 : extension_target == "1.4144" ? 1.4144 : extension_target == "1.618" ? 1.618 : 2.272
+
+get_fib236_price(float top_price, float bot_price, bool is_long) =>
+    price_range = top_price - bot_price
+    is_long ? bot_price + price_range * 0.236 : top_price - price_range * 0.236
+
+get_extension_price(float top_price, float bot_price, bool is_long) =>
+    price_range = top_price - bot_price
+    extension_value = get_extension_value()
+    is_long ? bot_price + price_range * extension_value : top_price - price_range * extension_value
+
+[h5_1, h5_2, h5_3,
+ l5_1, l5_2, l5_3,
+ c5_1, c5_2,
+ t5_1,
+ adx_1, vwap5_1, vol5_1, vol_sma5_1, atr5_1] = request.security(
+     syminfo.tickerid,
+     "5",
+     [high[1], high[2], high[3],
+      low[1], low[2], low[3],
+      close[1], close[2],
+      time[1],
+      calc_adx()[1], ta.vwap(hlc3)[1], volume[1], ta.sma(volume, 20)[1], ta.atr(14)[1]],
+     lookahead=barmerge.lookahead_on
+     )
+
+is_new_5m = ta.change(time("5")) != 0
+session_active = not na(time(timeframe.period, trade_session))
+
+var int last_signal = 0
+var int last_confirmed_box_direction = 0
+var int green_streak = 0
+var int red_streak = 0
+var bool first_green_after_red = false
+var bool first_red_after_green = false
+
+box_top = math.max(h5_1, h5_2)
+box_bottom = math.min(l5_1, l5_2)
+box_range = box_top - box_bottom
+
+adx_pass = not use_adx_filter or adx_1 > adx_threshold
+session_pass = not use_session_filter or session_active
+volume_pass = not use_volume_filter or vol5_1 > vol_sma5_1 * volume_multiplier
+range_pass = not use_range_filter or box_range > atr5_1 * min_box_atr_mult
+
+first_green_after_red := false
+first_red_after_green := false
+
+if is_new_5m
+    break_high_1 = use_close_breakout ? c5_1 > h5_2 : h5_1 > h5_2
+    break_low_1 = use_close_breakout ? c5_1 < l5_2 : l5_1 < l5_2
+    break_high_2 = use_close_breakout ? c5_2 > h5_3 : h5_2 > h5_3
+    break_low_2 = use_close_breakout ? c5_2 < l5_3 : l5_2 < l5_3
+
+    signal_long = consecutive_confirms == 1 ? break_high_1 : break_high_1 and break_high_2
+    signal_short = consecutive_confirms == 1 ? break_low_1 : break_low_1 and break_low_2
+
+    direction_long_pass = not use_alternating_filter or last_signal != 1
+    direction_short_pass = not use_alternating_filter or last_signal != -1
+    vwap_long_pass = not use_vwap_filter or c5_1 > vwap5_1
+    vwap_short_pass = not use_vwap_filter or c5_1 < vwap5_1
+
+    is_long = signal_long and direction_long_pass and adx_pass and session_pass and vwap_long_pass and volume_pass and range_pass
+    is_short = signal_short and direction_short_pass and adx_pass and session_pass and vwap_short_pass and volume_pass and range_pass
+
+    if is_long
+        first_green_after_red := last_confirmed_box_direction == -1
+        last_signal := 1
+        last_confirmed_box_direction := 1
+        green_streak += 1
+        red_streak := 0
+
+        entry_236 = get_fib236_price(box_top, box_bottom, true)
+        extension = get_extension_price(box_top, box_bottom, true)
+        box.new(t5_1, box_top, t5_1 + 5 * 60 * 1000, box_bottom, xloc=xloc.bar_time, bgcolor=color.new(color.green, 80), border_color=na)
+        line.new(t5_1, entry_236, t5_1 + 5 * 60 * 1000, entry_236, xloc=xloc.bar_time, color=color.new(color.red, 60))
+        line.new(t5_1, extension, t5_1 + 5 * 60 * 1000, extension, xloc=xloc.bar_time, color=color.white)
+
+    if is_short
+        first_red_after_green := last_confirmed_box_direction == 1
+        last_signal := -1
+        last_confirmed_box_direction := -1
+        red_streak += 1
+        green_streak := 0
+
+        entry_236 = get_fib236_price(box_top, box_bottom, false)
+        extension = get_extension_price(box_top, box_bottom, false)
+        box.new(t5_1, box_top, t5_1 + 5 * 60 * 1000, box_bottom, xloc=xloc.bar_time, bgcolor=color.new(color.red, 80), border_color=na)
+        line.new(t5_1, entry_236, t5_1 + 5 * 60 * 1000, entry_236, xloc=xloc.bar_time, color=color.new(color.red, 60))
+        line.new(t5_1, extension, t5_1 + 5 * 60 * 1000, extension, xloc=xloc.bar_time, color=color.white)
+
+plot(green_streak, "Green Streak", display=display.data_window)
+plot(red_streak, "Red Streak", display=display.data_window)
+alertcondition(first_green_after_red, "First Green Box After Red Trend", "First confirmed green box after red box trend")
+alertcondition(first_red_after_green, "First Red Box After Green Trend", "First confirmed red box after green box trend")
