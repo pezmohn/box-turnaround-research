@@ -21,6 +21,7 @@ from src.labels import add_context_labels
 
 
 DEFAULT_BASELINE_EVENTS = Path("data/processed/box_events_all.parquet")
+DEFAULT_EVENTS_CACHE_DIR = Path("data/processed/ticker_fit_events")
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-dir", default="/home/backtest/stockdata/stock_data_1min")
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--baseline-events", help="Optional existing baseline events parquet/csv.")
+    parser.add_argument("--events-cache-dir", default=str(DEFAULT_EVENTS_CACHE_DIR))
+    parser.add_argument("--refresh-cache", action="store_true")
     parser.add_argument("--output-dir", default="outputs/ticker_fit")
     parser.add_argument("--start", help="Optional inclusive timestamp filter.")
     parser.add_argument("--end", help="Optional exclusive timestamp filter.")
@@ -46,6 +49,8 @@ def main() -> int:
         config=config,
         data_dir=Path(args.data_dir),
         baseline_events_path=Path(args.baseline_events) if args.baseline_events else None,
+        events_cache_dir=Path(args.events_cache_dir),
+        refresh_cache=args.refresh_cache,
         start=args.start,
         end=args.end,
     )
@@ -87,6 +92,8 @@ def load_ticker_and_baseline_events(
     config: dict,
     data_dir: Path,
     baseline_events_path: Path | None = None,
+    events_cache_dir: Path | None = DEFAULT_EVENTS_CACHE_DIR,
+    refresh_cache: bool = False,
     start: str | None = None,
     end: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
@@ -97,19 +104,68 @@ def load_ticker_and_baseline_events(
         all_events["symbol"] = all_events["symbol"].astype(str).str.upper()
         target = all_events[all_events["symbol"] == symbol].copy()
         if target.empty:
-            target = build_symbol_events(symbol, data_dir, config, start=start, end=end)
+            target = load_or_build_symbol_events(
+                symbol,
+                data_dir,
+                config,
+                events_cache_dir=events_cache_dir,
+                refresh_cache=refresh_cache,
+                start=start,
+                end=end,
+            )
         baseline = all_events[all_events["symbol"] != symbol].copy()
         return target, baseline, str(baseline_path)
 
-    target = build_symbol_events(symbol, data_dir, config, start=start, end=end)
+    target = load_or_build_symbol_events(
+        symbol,
+        data_dir,
+        config,
+        events_cache_dir=events_cache_dir,
+        refresh_cache=refresh_cache,
+        start=start,
+        end=end,
+    )
     baseline_symbols = [normalize_symbol(s) for s in config["data"]["default_symbols"] if normalize_symbol(s) != symbol]
     baseline_parts = [
-        build_symbol_events(candidate, data_dir, config, start=start, end=end)
+        load_or_build_symbol_events(
+            candidate,
+            data_dir,
+            config,
+            events_cache_dir=events_cache_dir,
+            refresh_cache=refresh_cache,
+            start=start,
+            end=end,
+        )
         for candidate in baseline_symbols
         if (data_dir / f"{candidate}.parquet").exists()
     ]
     baseline = pd.concat(baseline_parts, ignore_index=True) if baseline_parts else pd.DataFrame()
     return target, baseline, f"{data_dir} default_symbols"
+
+
+def load_or_build_symbol_events(
+    symbol: str,
+    data_dir: Path,
+    config: dict,
+    events_cache_dir: Path | None = DEFAULT_EVENTS_CACHE_DIR,
+    refresh_cache: bool = False,
+    start: str | None = None,
+    end: str | None = None,
+) -> pd.DataFrame:
+    source_path = data_dir / f"{symbol}.parquet"
+    if not source_path.exists():
+        raise FileNotFoundError(f"Missing 1m data for {symbol}: {source_path}")
+    cache_path = _cache_path(symbol, events_cache_dir, start=start, end=end) if events_cache_dir else None
+    if cache_path and _cache_is_usable(cache_path, source_path, refresh_cache=refresh_cache):
+        print(f"{symbol}: loaded cached events from {cache_path}")
+        return _read_events_file(cache_path)
+
+    events = build_symbol_events(symbol, data_dir, config, start=start, end=end)
+    if cache_path:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        events.to_parquet(cache_path, index=False)
+        print(f"{symbol}: cached {len(events):,} events to {cache_path}")
+    return events
 
 
 def build_symbol_events(
@@ -132,6 +188,23 @@ def build_symbol_events(
             mask &= ts < pd.Timestamp(end)
         ohlcv = ohlcv.loc[mask]
     return add_context_labels(build_box_events(ohlcv, config, symbol=symbol), config)
+
+
+def _cache_path(symbol: str, events_cache_dir: Path | None, start: str | None, end: str | None) -> Path | None:
+    if events_cache_dir is None:
+        return None
+    suffix = ""
+    if start or end:
+        clean_start = _safe_token(start or "begin")
+        clean_end = _safe_token(end or "latest")
+        suffix = f"_{clean_start}_{clean_end}"
+    return events_cache_dir / f"{symbol}{suffix}_box_events.parquet"
+
+
+def _cache_is_usable(cache_path: Path, source_path: Path, refresh_cache: bool = False) -> bool:
+    if refresh_cache or not cache_path.exists():
+        return False
+    return cache_path.stat().st_mtime >= source_path.stat().st_mtime
 
 
 def analyze_fit(
@@ -380,6 +453,10 @@ def _filter_events(events: pd.DataFrame, start: str | None, end: str | None) -> 
     if end:
         out = out[ts < pd.Timestamp(end)]
     return out
+
+
+def _safe_token(value: str) -> str:
+    return "".join(ch if ch.isalnum() else "-" for ch in value.upper()).strip("-")
 
 
 def _session_days(events: pd.DataFrame) -> int:
