@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-from scripts.analyze_ticker_fit import analyze_fit, classify_current_context, prepare_fit_events
+from scripts.analyze_ticker_fit import (
+    _cache_is_usable,
+    _cache_path,
+    analyze_fit,
+    classify_current_context,
+    prepare_fit_events,
+)
 
 
 def _row(
@@ -96,3 +102,27 @@ def test_current_context_marks_fresh_opposite_after_mature_streak() -> None:
 
     assert context["state"] == "transition confirmed"
     assert context["prior_streak_length"] == 5
+
+
+def test_cache_path_uses_plain_symbol_without_date_filter(tmp_path) -> None:
+    assert _cache_path("DELL", tmp_path, start=None, end=None) == tmp_path / "DELL_box_events.parquet"
+
+
+def test_cache_path_is_date_filter_specific(tmp_path) -> None:
+    assert _cache_path("DELL", tmp_path, start="2025-01-01", end="2026-01-01") == (
+        tmp_path / "DELL_2025-01-01_2026-01-01_box_events.parquet"
+    )
+
+
+def test_cache_is_not_used_when_source_is_newer(tmp_path) -> None:
+    source = tmp_path / "DELL.parquet"
+    cache = tmp_path / "DELL_box_events.parquet"
+    source.write_text("source", encoding="utf-8")
+    cache.write_text("cache", encoding="utf-8")
+    old_cache_time = source.stat().st_mtime - 10
+    cache.touch()
+    import os
+
+    os.utime(cache, (old_cache_time, old_cache_time))
+
+    assert not _cache_is_usable(cache, source)
