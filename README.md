@@ -68,6 +68,10 @@ python scripts/analyze_ticker_fit.py NOW \
 This writes `outputs/ticker_fit/NOW_fit_report.md`. The verdict is a fit/context
 classification, not a directional trade call.
 
+Ticker events are cached by default under `data/processed/ticker_fit_events/`.
+Use `--refresh-cache` when the 1-minute source data has changed and you want to
+force a rebuild.
+
 VWAP_OFF re-entry sensitivity:
 
 ```bash
