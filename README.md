@@ -57,6 +57,17 @@ python scripts/run_box_research.py \
   --data-dir /home/backtest/stockdata/stock_data_1min
 ```
 
+Ticker fit check against the validated box-research profile:
+
+```bash
+python scripts/analyze_ticker_fit.py NOW \
+  --data-dir /home/backtest/stockdata/stock_data_1min \
+  --baseline-events data/processed/box_events_all.parquet
+```
+
+This writes `outputs/ticker_fit/NOW_fit_report.md`. The verdict is a fit/context
+classification, not a directional trade call.
+
 VWAP_OFF re-entry sensitivity:
 
 ```bash
