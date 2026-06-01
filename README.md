@@ -57,6 +57,13 @@ python scripts/run_box_research.py \
   --data-dir /home/backtest/stockdata/stock_data_1min
 ```
 
+VWAP_OFF re-entry sensitivity:
+
+```bash
+python scripts/run_vwap_off_reentry.py \
+  --data-dir /home/backtest/stockdata/stock_data_1min
+```
+
 Generated event datasets are written under `data/processed/`. Tables and the
 Markdown report are written under `outputs/`. These are local artifacts and are
 gitignored by design.
